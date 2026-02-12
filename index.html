@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SHIFTY</title>
+  <style>
+    :root{
+      --hudW: min(720px, 94vw);
+      --boardW: min(560px, 94vw);
+
+      --gridSize: 222px;
+      --cellSize: 68px;
+      --cellGap: 4px;
+      --gridPad: 5px;
+
+      --jitterStep: 7px; /* ズレの基本量 */
+      --outerLine: 3px;
+      --innerLine: 1.5px;
+    }
+
+    body{
+      margin:0;
+      min-height:100vh;
+      background:#111;
+      color:#fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:flex-start;
+      gap:16px;
+
+      padding:18px 0 40px;
+      box-sizing:border-box;
+    }
+
+    .title{
+      width:var(--hudW);
+      display:flex;
+      justify-content:flex-start;
+      align-items:center;
+      padding:0 2px;
+      box-sizing:border-box;
+      margin-top:2px;
+    }
+    .title h1{
+      margin:0;
+      font-size:22px;
+      letter-spacing:0.14em;
+      opacity:0.95;
+    }
+
+    .hud{
+      width:var(--hudW);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      padding:12px 14px;
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:14px;
+      background:rgba(255,255,255,0.04);
+      box-sizing:border-box;
+      font-size:14px;
+    }
+
+    .hudLeft{
+      display:flex;
+      flex-direction:column;
+      gap:7px;
+      line-height:1.2;
+      min-width: 240px;
+    }
+
+    .badge{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-weight:900;
+    }
+
+    .dot{
+      width:12px;height:12px;border-radius:50%;
+      border:2px solid rgba(255,255,255,0.25);
+      box-sizing:border-box;
+      background: rgba(245,245,245,0.9);
+    }
+    .dot.p1{ background: rgba(245,245,245,0.92); } /* WHITE */
+    .dot.p2{ background: rgba(15,15,15,0.92); }    /* BLACK */
+
+    .sub{
+      color:rgba(255,255,255,0.80);
+      font-weight:900;
+      font-size:13px;
+    }
+
+    .hintLine{
+      color:rgba(255,255,255,0.62);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .scoreLine{
+      color:rgba(255,255,255,0.78);
+      font-size:12px;
+      line-height:1.2;
+      font-weight:900;
+    }
+
+    .hudRight{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    button{
+      border:1px solid rgba(255,255,255,0.18);
+      background:rgba(255,255,255,0.06);
+      color:rgba(255,255,255,0.92);
+      border-radius:14px;
+      padding:10px 12px;
+      font-weight:900;
+      cursor:pointer;
+      white-space:nowrap;
+      display:flex;
+      align-items:center;
+      gap:9px;
+    }
+    button:disabled{ opacity:0.35; cursor:not-allowed; }
+
+    .rotIcon{
+      font-size:36px;
+      line-height:1;
+      display:inline-block;
+      transform: translateY(-1px);
+    }
+
+    /* ===== 盤（斜めアングル撤去） ===== */
+    .boardWrap{
+      width:var(--boardW);
+      display:flex;
+      justify-content:center;
+      align-items:center;
+
+      margin-top:118px;
+      margin-bottom:128px;
+    }
+
+    .board{
+      width: calc(var(--gridSize) * 2);
+      height: calc(var(--gridSize) * 2);
+
+      display:grid;
+      grid-template-columns:repeat(2, var(--gridSize));
+      grid-template-rows:repeat(2, var(--gridSize));
+
+      transform-origin:center;
+      transform: rotate(45deg);
+      position: relative;
+
+      box-shadow: 0 26px 60px rgba(0,0,0,0.55);
+      isolation: isolate;
+
+      overflow: visible;
+    }
+
+    /* 外周は board が担当（3px） */
+    .board::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      border: var(--outerLine) solid #666;
+      pointer-events:none;
+      z-index: 2;
+      box-sizing:border-box;
+    }
+
+    /* 中央の十字線（外周の1/2太さ） */
+.board::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index: 2;
+  background:
+    /* 縦線 */
+    linear-gradient(
+      to right,
+      transparent calc(50% - (var(--innerLine) / 2)),
+      #666       calc(50% - (var(--innerLine) / 2)),
+      #666       calc(50% + (var(--innerLine) / 2)),
+      transparent calc(50% + (var(--innerLine) / 2))
+    ),
+    /* 横線 */
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - (var(--innerLine) / 2)),
+      #666       calc(50% - (var(--innerLine) / 2)),
+      #666       calc(50% + (var(--innerLine) / 2)),
+      transparent calc(50% + (var(--innerLine) / 2))
+    );
+}
+
+
+
+    
+
+    /* 4つの盤は border で（内側線は1.5px、二重線を防ぐため片側だけ描く） */
+    .grid3{
+      width:var(--gridSize);
+      height:var(--gridSize);
+
+      display:grid;
+      grid-template-columns:repeat(3, var(--cellSize));
+      grid-template-rows:repeat(3, var(--cellSize));
+      gap:var(--cellGap);
+
+      padding: var(--gridPad);
+      box-sizing:border-box;
+
+      background:rgba(255,255,255,0.03);
+      position:relative;
+
+      border: var(--innerLine) solid #666;
+      border-radius: 0px;
+
+      transition: transform 820ms ease;
+      will-change: transform;
+
+      overflow: visible;
+      z-index: 1;
+    }
+
+    /* 二重線を消す（内側の境界は片側だけ） */
+    .board > .grid3:nth-child(1){ border-right: 0; border-bottom: 0; } /* TL */
+    .board > .grid3:nth-child(2){ border-left:  0; border-bottom: 0; } /* TR */
+    .board > .grid3:nth-child(3){ border-right: 0; border-top:    0; } /* BL */
+    .board > .grid3:nth-child(4){ border-left:  0; border-top:    0; } /* BR */
+
+    .grid3.pickable{
+      border-color: rgba(255,255,255,0.55);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.08) inset;
+    }
+    .grid3.picked{
+      border-color: rgba(255,255,255,0.95);
+      box-shadow: 0 0 0 5px rgba(255,255,255,0.12) inset;
+    }
+    .grid3.rotating{
+      border-color: rgba(255,255,255,0.95);
+      box-shadow: 0 0 0 10px rgba(255,255,255,0.08) inset;
+    }
+
+    .cell{
+      width:var(--cellSize);
+      height:var(--cellSize);
+      background:#333;
+      border:1px solid #555;
+      border-radius:10px;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      cursor:pointer;
+      user-select:none;
+      position:relative;
+      box-sizing:border-box;
+      touch-action: none;
+
+      z-index: 0;
+      overflow: visible;
+    }
+    .cell:hover{ background:#555; }
+
+    .cell.selected{
+      outline:3px solid rgba(255,255,255,0.75);
+      outline-offset:-3px;
+    }
+    .cell.hint{
+      background:rgba(255,255,255,0.08);
+      outline:3px solid rgba(255,255,255,0.25);
+      outline-offset:-3px;
+    }
+    .cell.hint:hover{ background:rgba(255,255,255,0.14); }
+
+    .goal{
+      outline:2px dashed rgba(255,255,255,0.35);
+      outline-offset:-6px;
+    }
+
+    /* 駒スタック */
+    .stack{
+      width:50px;height:50px;
+      position:relative;
+      pointer-events:none;
+      z-index: 9999;
+    }
+
+    .pieceLayer{
+      width:42px;height:42px;
+      position:absolute;
+      border-radius:50%;
+      box-sizing:border-box;
+      box-shadow:0 12px 22px rgba(0,0,0,0.55);
+      border:2px solid rgba(255,255,255,0.25);
+    }
+
+    /* 白黒クラシック */
+    .p1{
+      background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.98), rgba(210,210,210,0.92));
+      border-color: rgba(0,0,0,0.28);
+    }
+    .p2{
+      background: radial-gradient(circle at 30% 28%, rgba(80,80,80,0.95), rgba(8,8,8,0.95));
+      border-color: rgba(255,255,255,0.14);
+    }
+
+    .help{
+      width:var(--hudW);
+      font-size:12px;
+      color:rgba(255,255,255,0.62);
+      line-height:1.5;
+      padding:0 4px 0;
+      box-sizing:border-box;
+    }
+
+    /* 勝利オーバーレイ */
+    .overlay{
+      position:fixed;
+      inset:0;
+      display:none;
+      place-items:center;
+      background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.10), rgba(0,0,0,0.78));
+      backdrop-filter: blur(6px);
+      z-index: 999;
+    }
+    .overlay.show{ display:grid; }
+
+    .modal{
+      width:min(520px, 92vw);
+      border:1px solid rgba(255,255,255,0.22);
+      background: rgba(15,15,15,0.92);
+      border-radius:18px;
+      padding:22px 18px;
+      box-sizing:border-box;
+      text-align:center;
+      box-shadow: 0 22px 60px rgba(0,0,0,0.55);
+    }
+    .modal h2{
+      margin:0 0 10px;
+      font-size:28px;
+      letter-spacing:0.14em;
+      text-transform: uppercase;
+    }
+    .modal p{
+      margin:0 0 18px;
+      color:rgba(255,255,255,0.78);
+      font-size:14px;
+      line-height:1.55;
+    }
+    .modal .row{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="title"><h1>SHIFTY</h1></div>
+
+  <div class="hud">
+    <div class="hudLeft">
+      <div class="badge">
+        <span id="turnDot" class="dot p1"></span>
+        <span id="turnText">TURN: WHITE</span>
+      </div>
+
+      <!-- ✅ スコア追加 -->
+      <div id="scoreText" class="scoreLine">SCORE: WHITE 0 / BLACK 0</div>
+
+      <div id="phaseText" class="sub">PHASE: MOVE</div>
+      <div id="infoText" class="hintLine">
+        ドラッグ=基本移動。タップ選択→タップ移動=上だけ移動（FREEZEも上だけは可）。
+      </div>
+    </div>
+
+    <div class="hudRight">
+      <button id="btnCCW" disabled><span class="rotIcon">⟲</span>Rotate</button>
+      <button id="btnCW"  disabled><span class="rotIcon">⟳</span>Rotate</button>
+      <button id="btnReset">Reset</button>
+    </div>
+  </div>
+
+  <div class="boardWrap">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="help">
+    ・自分トップのマスには乗れない（空 or 相手トップのみ）<br/>
+    ・PLAIN(1枚)=8方向 / HACK(2枚)=接辺方向のみ（※2枚まとめ移動は空マスのみ） / FREEZE(3枚)=重なりごと移動不可（上だけは可）<br/>
+    ・移動は基本ドラッグ。タップ選択→タップ移動で「上だけ」移動も可能（HACK/FREEZEの上だけは相手に乗れる）<br/>
+    ・「上だけ移動（降りる）」をした時だけ ROTATE（SHIFTY）
+  </div>
+
+  <div id="overlay" class="overlay">
+    <div class="modal">
+      <h2 id="winTitle">WIN</h2>
+      <p id="winText">ゲーム終了。</p>
+      <div class="row">
+        <button id="btnPlayAgain">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const boardEl = document.getElementById("board");
+  const turnDot = document.getElementById("turnDot");
+  const turnText = document.getElementById("turnText");
+  const scoreText = document.getElementById("scoreText");
+  const phaseText = document.getElementById("phaseText");
+  const infoText = document.getElementById("infoText");
+  const btnCW = document.getElementById("btnCW");
+  const btnCCW = document.getElementById("btnCCW");
+  const btnReset = document.getElementById("btnReset");
+
+  const overlay = document.getElementById("overlay");
+  const winTitle = document.getElementById("winTitle");
+  const winText = document.getElementById("winText");
+  const btnPlayAgain = document.getElementById("btnPlayAgain");
+
+  const grids = ["TOP-LEFT","TOP-RIGHT","BOTTOM-LEFT","BOTTOM-RIGHT"];
+
+  // ===== State =====
+  const state = new Map(); // "GRID:POS" -> [{p, id, jitterDir?}, ...]
+  const key = (g,p) => `${g}:${p}`;
+  const getStack = (g,p) => state.get(key(g,p)) || [];
+  const topOwner = (g,p) => {
+    const st = getStack(g,p);
+    return st.length ? st[st.length-1].p : null;
+  };
+
+  // token id
+  let tokenSeq = 1;
+  const newToken = (p) => ({ p, id: tokenSeq++, jitterDir: null });
+
+  // 8方向（中心除く）
+  const DIRS8 = [
+    {dx: 1, dy: 0},  // →
+    {dx:-1, dy: 0},  // ←
+    {dx: 0, dy: 1},  // ↓
+    {dx: 0, dy:-1},  // ↑
+    {dx: 1, dy: 1},  // ↘
+    {dx: 1, dy:-1},  // ↗
+    {dx:-1, dy: 1},  // ↙
+    {dx:-1, dy:-1},  // ↖
+  ];
+
+  // 反対方向（3枚目を「反対」に置く用）
+  const OPP8 = [1,0,3,2,7,6,5,4];
+
+  function randInt(n){ return Math.floor(Math.random()*n); }
+
+  // 連続同方向禁止でdirIndexを決める（前のトークンのdirを避ける）
+  function assignJitterDirForPushedToken(toStack){
+    const prev = toStack.length ? toStack[toStack.length-1].jitterDir : null;
+    let pick = randInt(DIRS8.length);
+    if (prev !== null){
+      while (pick === prev) pick = randInt(DIRS8.length);
+    }
+    return pick;
+  }
+
+  // Goals
+  const GOAL_P1 = { grid:"TOP-LEFT", pos:0 };
+  const GOAL_P2 = { grid:"BOTTOM-RIGHT", pos:8 };
+  function isGoalCellFor(player, grid, pos){
+    if (player === 1) return grid===GOAL_P1.grid && pos===GOAL_P1.pos;
+    return grid===GOAL_P2.grid && pos===GOAL_P2.pos;
+  }
+
+  // 6x6 mapping
+  const rc = pos => ({ r: Math.floor(pos/3), c: pos%3 });
+  const posOf = (r,c) => r*3 + c;
+
+  const GRID_TO_GXY = {
+    "TOP-LEFT": {gx:0,gy:0},
+    "TOP-RIGHT": {gx:1,gy:0},
+    "BOTTOM-LEFT": {gx:0,gy:1},
+    "BOTTOM-RIGHT": {gx:1,gy:1}
+  };
+  const GXY_TO_GRID = [
+    ["TOP-LEFT","TOP-RIGHT"],
+    ["BOTTOM-LEFT","BOTTOM-RIGHT"]
+  ];
+
+  const toGlobal = (grid,pos) => {
+    const t = GRID_TO_GXY[grid];
+    if (!t) return null;
+    const {r,c} = rc(pos);
+    return { R: t.gy*3 + r, C: t.gx*3 + c };
+  };
+  const fromGlobal = (R,C) => {
+    const gx = Math.floor(C/3), gy = Math.floor(R/3);
+    const grid = GXY_TO_GRID[gy][gx];
+    return { grid, pos: posOf(R%3, C%3) };
+  };
+
+  // movement dirs
+  const dirsPlain = [
+    [-1,-1],[-1,0],[-1,1],
+    [0,-1],        [0,1],
+    [1,-1],[1,0],[1,1]
+  ];
+  // 見た目の斜め = 内部の縦横
+  const dirsEdge = [[-1,0],[1,0],[0,-1],[0,1]];
+
+  // mode:
+  //  - "WHOLE": ドラッグ。HACK(2枚)は2枚まとめ。FREEZE不可。
+  //  - "TOP"  : タップ移動。HACK/FREEZEでも可。方向はHACK/FREEZEは接辺方向のみ。
+  function legalMoves(grid,pos,fromHeight,mode){
+    const g = toGlobal(grid,pos);
+    if (!g) return [];
+
+    if (mode === "WHOLE" && fromHeight >= 3) return [];
+
+    let dirs = dirsPlain;
+
+    if (fromHeight === 2){
+      dirs = dirsEdge;
+    } else if (fromHeight === 3){
+      dirs = (mode === "TOP") ? dirsEdge : [];
+    }
+
+    const moves = [];
+    for (const [dr,dc] of dirs){
+      const nR = g.R + dr, nC = g.C + dc;
+      if (nR<0||nR>5||nC<0||nC>5) continue;
+      moves.push(fromGlobal(nR,nC));
+    }
+    return moves;
+  }
+
+  function rotateGridLogic(gridName, dir){
+    const old = Array.from({length:9}, (_,p)=> getStack(gridName,p).slice());
+    for (let oldPos=0; oldPos<9; oldPos++){
+      const {r,c} = rc(oldPos);
+      let nr,nc;
+      if (dir === "CW"){ nr = c; nc = 2-r; }
+      else { nr = 2-c; nc = r; }
+      const newPos = posOf(nr,nc);
+
+      const st = old[oldPos];
+      if (st.length === 0) state.delete(key(gridName,newPos));
+      else state.set(key(gridName,newPos), st);
+    }
+  }
+
+  // UI state
+  let currentPlayer = 1;      // 1=WHITE, 2=BLACK
+  let phase = "MOVE";         // MOVE | ROTATE | END
+  let selected = null;        // {grid,pos}
+  let hints = [];             // [{grid,pos}]
+  let rotatePickGrid = null;
+  let gameOver = false;
+
+  // ✅ スコア
+  let scoreWhite = 0;
+  let scoreBlack = 0;
+
+  // Drag
+  let drag = null;
+  const DRAG_THRESHOLD = 8;
+
+  function updateHUD(){
+    turnDot.className = `dot ${currentPlayer===1?"p1":"p2"}`;
+    const p = currentPlayer===1 ? "WHITE" : "BLACK";
+
+    scoreText.textContent = `SCORE: WHITE ${scoreWhite} / BLACK ${scoreBlack}`;
+
+    if (phase === "ROTATE"){
+      turnText.textContent = `TURN: ${p}（回転）`;
+      phaseText.textContent = `PHASE: ROTATE`;
+      infoText.textContent = rotatePickGrid
+        ? `回転する盤を選択済み → Rotate`
+        : `回転する盤をタップして選ぶ`;
+    } else if (phase === "END"){
+      turnText.textContent = `TURN: ${p}`;
+      phaseText.textContent = `PHASE: END`;
+      infoText.textContent = `ゲーム終了`;
+    } else {
+      turnText.textContent = `TURN: ${p}`;
+      phaseText.textContent = `PHASE: MOVE`;
+      infoText.textContent = `ドラッグ=基本移動。タップ選択→タップ移動=上だけ移動（FREEZEも上だけは可）。`;
+    }
+
+    btnCW.disabled = !(phase==="ROTATE" && rotatePickGrid && !gameOver);
+    btnCCW.disabled = !(phase==="ROTATE" && rotatePickGrid && !gameOver);
+  }
+
+  function clearMarks(){
+    document.querySelectorAll(".cell").forEach(c=>c.classList.remove("selected","hint"));
+  }
+  function markSelectedAndHints(){
+    clearMarks();
+    if (selected){
+      const el = document.querySelector(`.cell[data-grid="${selected.grid}"][data-pos="${selected.pos}"]`);
+      if (el) el.classList.add("selected");
+    }
+    for (const h of hints){
+      const el = document.querySelector(`.cell[data-grid="${h.grid}"][data-pos="${h.pos}"]`);
+      if (el) el.classList.add("hint");
+    }
+  }
+  function markRotate(){
+    document.querySelectorAll(".grid3").forEach(g=>{
+      g.classList.remove("pickable","picked");
+      if (phase !== "ROTATE") return;
+      g.classList.add("pickable");
+      if (rotatePickGrid && g.dataset.gridname === rotatePickGrid) g.classList.add("picked");
+    });
+  }
+
+  function render(){
+    document.querySelectorAll(".cell").forEach(cell=>{
+      const g = cell.dataset.grid;
+      const p = Number(cell.dataset.pos);
+      const st = getStack(g,p);
+
+      cell.classList.toggle("goal", isGoalCellFor(1,g,p) || isGoalCellFor(2,g,p));
+
+      const old = cell.querySelector(".stack");
+      if (old) old.remove();
+      if (!st.length) return;
+
+      const stackEl = document.createElement("div");
+      stackEl.className = "stack";
+
+      const step = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--jitterStep")) || 7;
+
+      // ✅ 重なり表示：
+      //  2枚目 = token.jitterDir 方向に step
+      //  3枚目 = 2枚目の「反対方向」に step（距離を増やさない）
+      const baseDir = (st.length >= 2)
+        ? (st[1].jitterDir ?? 0)
+        : 0;
+
+      st.forEach((tok,idx)=>{
+        const layer = document.createElement("div");
+        layer.className = `pieceLayer ${tok.p===1?"p1":"p2"}`;
+        layer.style.zIndex = String(10+idx);
+
+        let x = 0, y = 0;
+
+        if (idx === 1){
+          const v = DIRS8[baseDir] || DIRS8[0];
+          x = v.dx * step;
+          y = v.dy * step;
+        } else if (idx === 2){
+          const opp = OPP8[baseDir] ?? 1;
+          const v = DIRS8[opp] || DIRS8[1];
+          x = v.dx * step;
+          y = v.dy * step;
+        }
+
+        layer.style.left = x + "px";
+        layer.style.top  = y + "px";
+
+        stackEl.appendChild(layer);
+      });
+
+      cell.appendChild(stackEl);
+    });
+
+    updateHUD();
+    markSelectedAndHints();
+    markRotate();
+  }
+
+  function buildBoard(){
+    boardEl.innerHTML = "";
+    for (const g of grids){
+      const wrap = document.createElement("div");
+      wrap.className = "grid3";
+      wrap.dataset.gridname = g;
+
+      for (let i=0;i<9;i++){
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.grid = g;
+        cell.dataset.pos = String(i);
+        wrap.appendChild(cell);
+      }
+      boardEl.appendChild(wrap);
+    }
+  }
+
+  // init placement
+  const p1Start = [
+    key("BOTTOM-RIGHT",8),
+    key("BOTTOM-RIGHT",7), key("BOTTOM-RIGHT",5),
+    key("BOTTOM-RIGHT",6), key("BOTTOM-RIGHT",4), key("BOTTOM-RIGHT",2),
+  ];
+  const p2Start = [
+    key("TOP-LEFT",0),
+    key("TOP-LEFT",1), key("TOP-LEFT",3),
+    key("TOP-LEFT",2), key("TOP-LEFT",4), key("TOP-LEFT",6),
+  ];
+
+  function init(){
+    state.clear();
+    tokenSeq = 1;
+
+    for (const k of p1Start) state.set(k,[newToken(1)]);
+    for (const k of p2Start) state.set(k,[newToken(2)]);
+
+    currentPlayer = 1;
+    phase = "MOVE";
+    selected = null;
+    hints = [];
+    rotatePickGrid = null;
+    gameOver = false;
+    drag = null;
+    overlay.classList.remove("show");
+    render();
+  }
+
+  function computeHints(fromGrid, fromPos, mode){
+    hints = [];
+    const st = getStack(fromGrid, fromPos);
+    if (!st.length) return;
+    if (st[st.length-1].p !== currentPlayer) return;
+
+    const fromHeight = st.length;
+
+    if (mode === "WHOLE" && fromHeight >= 3) return;
+
+    const cand = legalMoves(fromGrid, fromPos, fromHeight, mode);
+
+    hints = cand.filter(m=>{
+      const owner = topOwner(m.grid, m.pos);
+
+      if (owner !== null && owner === currentPlayer) return false;
+
+      const toSt = getStack(m.grid, m.pos);
+      if (toSt.length >= 3) return false;
+
+      if (mode === "WHOLE" && fromHeight === 2){
+        return owner === null;
+      }
+
+      return owner === null || owner !== currentPlayer;
+    });
+  }
+
+  function endGame(winner){
+    gameOver = true;
+    phase = "END";
+    selected = null;
+    hints = [];
+    rotatePickGrid = null;
+    drag = null;
+
+    // ✅ スコア加算
+    if (winner === 1) scoreWhite++;
+    else scoreBlack++;
+
+    winTitle.textContent = winner === 1 ? "WHITE WIN" : "BLACK WIN";
+    winText.textContent = `SCORE: WHITE ${scoreWhite} / BLACK ${scoreBlack}`;
+    overlay.classList.add("show");
+    render();
+  }
+
+  function applyMove(fromGrid, fromPos, toGrid, toPos, mode){
+    const fromSt = getStack(fromGrid, fromPos);
+    if (!fromSt.length) return false;
+
+    const fromHeight = fromSt.length;
+
+    if (mode === "WHOLE" && fromHeight >= 3) return false;
+
+    if (fromSt[fromSt.length-1].p !== currentPlayer) return false;
+
+    const ok = hints.some(h=>h.grid===toGrid && h.pos===toPos);
+    if (!ok) return false;
+
+    const destOwner = topOwner(toGrid,toPos);
+    if (destOwner !== null && destOwner === currentPlayer) return false;
+
+    if (mode === "WHOLE" && fromHeight === 2 && destOwner !== null) return false;
+
+    const toK = key(toGrid,toPos);
+    const toSt = state.get(toK) || [];
+    if (toSt.length >= 3) return false;
+
+    let movingTokens = [];
+    if (mode === "WHOLE" && fromHeight === 2){
+      movingTokens = fromSt.splice(0,2);
+    } else {
+      movingTokens = [fromSt.pop()];
+    }
+
+    const fromK = key(fromGrid,fromPos);
+    if (fromSt.length) state.set(fromK, fromSt);
+    else state.delete(fromK);
+
+    for (const t of movingTokens){
+      if (toSt.length >= 3){
+        for (let i=movingTokens.length-1;i>=0;i--) fromSt.push(movingTokens[i]);
+        state.set(fromK, fromSt);
+        return false;
+      }
+
+      // ✅ 重なり方向の付与（2枚目にランダム、3枚目はその反対に固定）
+      if (toSt.length === 0){
+        t.jitterDir = null;
+      } else if (toSt.length === 1){
+        t.jitterDir = assignJitterDirForPushedToken(toSt);
+      } else if (toSt.length === 2){
+        const base = toSt[1].jitterDir ?? 0;
+        t.jitterDir = OPP8[base] ?? 1;
+      }
+
+      toSt.push(t);
+    }
+    state.set(toK, toSt);
+
+    if (isGoalCellFor(currentPlayer, toGrid, toPos)){
+      endGame(currentPlayer);
+      return true;
+    }
+
+    const didTopOnlyMove = (mode === "TOP" && fromHeight >= 2);
+    if (didTopOnlyMove){
+      phase = "ROTATE";
+      rotatePickGrid = null;
+      selected = null;
+      hints = [];
+      render();
+      return true;
+    }
+
+    currentPlayer = (currentPlayer===1?2:1);
+    selected = null;
+    hints = [];
+    render();
+    return true;
+  }
+
+  function animateRotate(gridName, dir){
+    const gridEl = document.querySelector(`.grid3[data-gridname="${gridName}"]`);
+    if (!gridEl) return;
+
+    gridEl.classList.add("rotating");
+    const deg = (dir === "CW") ? 90 : -90;
+
+    gridEl.style.transition = "transform 820ms ease";
+    gridEl.style.transform = `rotate(${deg}deg)`;
+
+    setTimeout(()=>{
+      rotateGridLogic(gridName, dir);
+
+      gridEl.style.transition = "none";
+      gridEl.style.transform = "rotate(0deg)";
+      gridEl.offsetHeight;
+      gridEl.style.transition = "transform 820ms ease";
+
+      setTimeout(()=>gridEl.classList.remove("rotating"), 60);
+      render();
+    }, 820);
+  }
+
+  // ===== CLICK: tap select + tap move (TOP move) =====
+  boardEl.addEventListener("click", (e)=>{
+    if (gameOver) return;
+
+    const gridBox = e.target.closest(".grid3");
+    const cell = e.target.closest(".cell");
+
+    if (phase === "ROTATE"){
+      if (gridBox){
+        rotatePickGrid = gridBox.dataset.gridname;
+        render();
+      }
+      return;
+    }
+    if (phase !== "MOVE") return;
+    if (!cell) return;
+
+    const g = cell.dataset.grid;
+    const p = Number(cell.dataset.pos);
+
+    const isHint = hints.some(h=>h.grid===g && h.pos===p);
+    if (selected && isHint){
+      applyMove(selected.grid, selected.pos, g, p, "TOP");
+      return;
+    }
+
+    const st = getStack(g,p);
+    if (!st.length){
+      selected = null;
+      hints = [];
+      render();
+      return;
+    }
+
+    if (st[st.length-1].p !== currentPlayer){
+      selected = null;
+      hints = [];
+      render();
+      return;
+    }
+
+    selected = {grid:g, pos:p};
+    computeHints(g,p,"TOP");
+    render();
+  });
+
+  // ===== DRAG: basic move (WHOLE for HACK, TOP for others) =====
+  boardEl.addEventListener("pointerdown", (e)=>{
+    if (gameOver) return;
+    if (phase !== "MOVE") return;
+
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+
+    const g = cell.dataset.grid;
+    const p = Number(cell.dataset.pos);
+
+    const st = getStack(g,p);
+    if (!st.length) return;
+    if (st[st.length-1].p !== currentPlayer) return;
+
+    const fromHeight = st.length;
+    if (fromHeight >= 3) return;
+
+    drag = {
+      fromGrid: g,
+      fromPos: p,
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+      mode: (fromHeight === 2) ? "WHOLE" : "TOP",
+      over: null
+    };
+
+    computeHints(g,p,drag.mode);
+
+    selected = null;
+    render();
+
+    cell.setPointerCapture?.(e.pointerId);
+  });
+
+  boardEl.addEventListener("pointermove", (e)=>{
+    if (!drag || gameOver) return;
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.active && Math.hypot(dx,dy) > DRAG_THRESHOLD){
+      drag.active = true;
+    }
+    if (!drag.active) return;
+
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el?.closest?.(".cell");
+    if (!cell) return;
+
+    const g = cell.dataset.grid;
+    const p = Number(cell.dataset.pos);
+
+    const isHint = hints.some(h=>h.grid===g && h.pos===p);
+    drag.over = isHint ? {grid:g,pos:p} : null;
+  });
+
+  boardEl.addEventListener("pointerup", ()=>{
+    if (!drag || gameOver) return;
+
+    if (drag.active && drag.over){
+      applyMove(drag.fromGrid, drag.fromPos, drag.over.grid, drag.over.pos, drag.mode);
+    }
+    drag = null;
+  });
+
+  btnCW.addEventListener("click", ()=>{
+    if (gameOver) return;
+    if (phase!=="ROTATE" || !rotatePickGrid) return;
+    animateRotate(rotatePickGrid, "CW");
+
+    phase = "MOVE";
+    rotatePickGrid = null;
+    currentPlayer = (currentPlayer===1?2:1);
+    selected = null;
+    hints = [];
+    render();
+  });
+
+  btnCCW.addEventListener("click", ()=>{
+    if (gameOver) return;
+    if (phase!=="ROTATE" || !rotatePickGrid) return;
+    animateRotate(rotatePickGrid, "CCW");
+
+    phase = "MOVE";
+    rotatePickGrid = null;
+    currentPlayer = (currentPlayer===1?2:1);
+    selected = null;
+    hints = [];
+    render();
+  });
+
+  btnReset.addEventListener("click", ()=>init());
+  btnPlayAgain.addEventListener("click", ()=>init());
+
+  buildBoard();
+  init();
+</script>
+
+</body>
+</html>
